@@ -1,7 +1,7 @@
 [project]
 name = "pysalvo"
-version = "0.1.0"
-description = "Multi-cluster SLURM job runner for Mila/DRAC"
+version = "0.2.0.dev0"
+description = "Render + policy library for SLURM JobSpecs (Mila + DRAC clusters)"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"
