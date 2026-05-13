@@ -1,6 +1,6 @@
 [project]
 name = "pysalvo"
-version = "0.0.0"
+version = "0.1.0"
 description = "Multi-cluster SLURM job runner for Mila/DRAC"
 readme = "README.md"
 license = { text = "MIT" }
