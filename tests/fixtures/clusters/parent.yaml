@@ -1,0 +1,7 @@
+schema_version: 1
+id: parent
+display_name: Parent
+type: national
+cpus_per_gpu: 16
+accounts:
+  - { name: shared-acct, gpu_cap: 32, cpu_cap: 256, mem_cap_gb: 1024 }

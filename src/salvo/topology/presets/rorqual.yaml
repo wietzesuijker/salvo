@@ -1,0 +1,35 @@
+schema_version: 1
+id: rorqual
+display_name: "Rorqual (DRAC)"
+type: national
+extends: _national
+gpu_model: h100
+cpus_per_gpu: 16
+mem_per_gpu_gb: 96
+login:
+  ssh_alias: rorqual
+  apptainer_env: { GOMAXPROCS: "1", GOMEMLIMIT: "2GiB" }
+  reason: "login pids.max=512 kills apptainer pull/build"
+accounts:
+  - { name: rrg-bengioy-ad, gpu_cap: 32, cpu_cap: 256, mem_cap_gb: 1024 }
+  - { name: ctb-drolnick, gpu_cap: 16, cpu_cap: 0, mem_cap_gb: 0, gpu_only: true }
+  - { name: def-bengioy, gpu_cap: 4, cpu_cap: 64, mem_cap_gb: 256 }
+partitions:
+  - { name: gpubase_bygpu_b1, max_walltime_hours: 3, max_gpus_per_job: 4 }
+  - { name: gpubase_bygpu_b3, max_walltime_hours: 12, max_gpus_per_job: 4 }
+  - { name: cpubase_bycore_b1, max_walltime_hours: 3, max_gpus_per_job: 0, max_mem_gb: 192 }
+  - { name: cpubase_bycore_b4, max_walltime_hours: 12, max_gpus_per_job: 0, max_mem_gb: 192 }
+dispatch_rules:
+  - when: { gpus: ">0" }
+    prefer: [rrg-bengioy-ad, ctb-drolnick, def-bengioy]
+    reason: "GPU jobs prefer RRG, fall back to CTB then default"
+  - when: { gpus: 0 }
+    prefer: [rrg-bengioy-ad, def-bengioy]
+    forbid: [ctb-drolnick]
+    reason: "ctb-drolnick has no _cpu partner on rorqual"
+data:
+  scratch_root: /scratch/$USER
+  project_root: /project/rrg-bengioy-ad
+container_paths:
+  - /scratch/$USER/containers/{image}.sif
+  - /project/rrg-bengioy-ad/containers/{image}.sif

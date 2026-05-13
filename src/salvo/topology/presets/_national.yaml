@@ -1,0 +1,7 @@
+schema_version: 1
+id: _national
+display_name: "DRAC national defaults"
+type: national
+has_internet: false
+storage_hints:
+  symlink_eval_outputs: true

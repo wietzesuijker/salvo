@@ -1,0 +1,33 @@
+schema_version: 1
+id: mila
+display_name: "Mila (IDT)"
+type: local
+gpu_model: a100
+cpus_per_gpu: 4
+mem_per_gpu_gb: 96
+has_internet: true
+login:
+  ssh_alias: mila
+  reason: "alias only, FQDN bypasses ControlPath"
+accounts:
+  - { name: mila, gpu_cap: 64, cpu_cap: 1024, mem_cap_gb: 4096 }
+partitions:
+  - { name: main, max_walltime_hours: 3, max_gpus_per_job: 4, max_mem_gb: 256 }
+  - { name: long, max_walltime_hours: 168, max_gpus_per_job: 4, max_mem_gb: 256 }
+  - { name: main-cpu, max_walltime_hours: 3, max_gpus_per_job: 0, max_mem_gb: 64 }
+  - { name: long-cpu, max_walltime_hours: 168, max_gpus_per_job: 0, max_mem_gb: 768 }
+dispatch_rules:
+  - when: { gpus: ">0", time_min: "<=180" }
+    prefer: [mila]
+    reason: "short GPU jobs route to main (3h), not long (10h queue)"
+  - when: { gpus: 0, mem_mb: ">181000" }
+    prefer: [mila]
+    reason: "main-cpu cap 64G; long-cpu allows >=181G"
+data:
+  scratch_root: /network/scratch/$USER_INITIAL/$USER
+  project_root: /network/projects
+container_paths:
+  - /network/scratch/$USER_INITIAL/$USER/containers/{image}.sif
+storage_hints:
+  prefer_for_outputs: /network/scratch/$USER_INITIAL/$USER
+  symlink_eval_outputs: true

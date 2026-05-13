@@ -1,0 +1,9 @@
+schema_version: 1
+id: child
+display_name: Child
+type: national
+extends: parent
+accounts:
+  - { name: my-acct, gpu_cap: 8, cpu_cap: 64, mem_cap_gb: 256 }
+partitions:
+  - { name: main, max_walltime_hours: 12, max_gpus_per_job: 4 }
