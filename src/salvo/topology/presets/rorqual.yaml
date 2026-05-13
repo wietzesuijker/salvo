@@ -12,7 +12,7 @@ login:
   reason: "login pids.max=512 kills apptainer pull/build"
 accounts:
   - { name: rrg-bengioy-ad, gpu_cap: 32, cpu_cap: 256, mem_cap_gb: 1024 }
-  - { name: ctb-drolnick, gpu_cap: 16, cpu_cap: 0, mem_cap_gb: 0, gpu_only: true }
+  - { name: ctb-drolnick, gpu_cap: 16, cpu_cap: 256, mem_cap_gb: 1536, gpu_only: true }
   - { name: def-bengioy, gpu_cap: 4, cpu_cap: 64, mem_cap_gb: 256 }
 partitions:
   - { name: gpubase_bygpu_b1, max_walltime_hours: 3, max_gpus_per_job: 4 }
