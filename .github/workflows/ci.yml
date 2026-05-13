@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.11", "3.12"]
+        python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
@@ -20,4 +20,11 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --all-extras
       - run: uv run pre-commit run --all-files
+      - run: uv run mypy src/salvo
       - run: uv run pytest -v
+      - run: uv build
+      - name: Smoke-import built wheel
+        run: |
+          python -m venv /tmp/wheel-smoke
+          /tmp/wheel-smoke/bin/pip install --quiet dist/pysalvo-*.whl
+          /tmp/wheel-smoke/bin/python -c "from salvo import JobSpec, render; from salvo.policy import apply_oom, OomContext; from salvo.topology import load_preset"
