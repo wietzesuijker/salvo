@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import yaml
 from salvo.cli import app
 from typer.testing import CliRunner
 
@@ -10,27 +13,38 @@ def test_doctor_exits_zero_when_ok(fake_sbatch, tmp_home):
     assert "topology.detect" in r.stdout
 
 
-def test_submit_basic(fake_sbatch, tmp_home):
-    args = [
-        "submit",
-        "--name",
-        "t",
-        "--cpus",
-        "2",
-        "--mem",
-        "4G",
-        "--time",
-        "30m",
-        "--",
-        "echo",
-        "hi",
-    ]
-    r = runner.invoke(app, args)
-    assert r.exit_code == 0
-    assert "job_id" in r.stdout.lower() or "submitted" in r.stdout.lower()
+def test_render_emits_sbatch(fake_sbatch, tmp_home, tmp_path: Path):
+    spec_path = tmp_path / "spec.yaml"
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "t",
+                "cmd": ["echo", "hi"],
+                "cpus": 2,
+                "mem": "4G",
+                "time": "30m",
+            }
+        )
+    )
+    r = runner.invoke(app, ["render", str(spec_path)])
+    assert r.exit_code == 0, r.stdout
+    assert "#SBATCH" in r.stdout
+    assert "--job-name=t" in r.stdout
 
 
-def test_submit_plan_dry_run(fake_sbatch, tmp_home):
-    r = runner.invoke(app, ["submit", "--name", "t", "--plan", "--", "echo", "hi"])
-    assert r.exit_code == 0
+def test_render_honours_cluster_flag(fake_sbatch, tmp_home, tmp_path: Path):
+    spec_path = tmp_path / "spec.yaml"
+    spec_path.write_text(
+        yaml.safe_dump(
+            {
+                "name": "t",
+                "cmd": ["echo", "hi"],
+                "cpus": 2,
+                "mem": "4G",
+                "time": "30m",
+            }
+        )
+    )
+    r = runner.invoke(app, ["render", str(spec_path), "--cluster", "mila"])
+    assert r.exit_code == 0, r.stdout
     assert "#SBATCH" in r.stdout
