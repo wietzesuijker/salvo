@@ -30,6 +30,54 @@ def test_render_returns_sbatch_text(fake_sbatch, tmp_home):
     assert "--cpus-per-task=2" in out
 
 
+def test_render_is_pure_when_account_and_partition_supplied(monkeypatch):
+    """Library callers (cluv, xgenius) must be able to render off a SLURM node.
+
+    No subprocess.run mock here on purpose: if render() shells out to squeue
+    or anything else when account + partition are explicit, this test will
+    raise FileNotFoundError on a non-SLURM machine.
+    """
+
+    def _no_subprocess(*args, **kwargs):  # pragma: no cover - failure path
+        raise AssertionError(f"render() shelled out: {args!r} {kwargs!r}")
+
+    monkeypatch.setattr("subprocess.run", _no_subprocess)
+    spec = JobSpec(
+        name="train",
+        cmd=["python", "train.py"],
+        gpus=1,
+        cpus=8,
+        mem="32G",
+        time="2h",
+        on_oom=["bump_mem(1.5x, max=128G)", "fail"],
+    )
+    out = render(spec, cluster_id="mila", account="mila", partition="unkillable")
+    assert "#SBATCH --account=mila" in out
+    assert "#SBATCH --partition=unkillable" in out
+    assert "#SBATCH --gres=gpu:1" in out
+
+
+def test_render_uses_spec_pinned_account_and_partition(monkeypatch):
+    """spec.account / spec.partition also avoid the squeue path."""
+
+    def _no_subprocess(*args, **kwargs):  # pragma: no cover - failure path
+        raise AssertionError(f"render() shelled out: {args!r} {kwargs!r}")
+
+    monkeypatch.setattr("subprocess.run", _no_subprocess)
+    spec = JobSpec(
+        name="t",
+        cmd=["echo"],
+        cpus=2,
+        mem="4G",
+        time="30m",
+        account="rrg-foo",
+        partition="long",
+    )
+    out = render(spec, cluster_id="mila")
+    assert "#SBATCH --account=rrg-foo" in out
+    assert "#SBATCH --partition=long" in out
+
+
 def test_policy_parse_maps_to_steps():
     p = parse(["bump_mem(1.5x, max=128G)", "escalate_partition", "fail"])
     assert isinstance(p[0], BumpMemStep)

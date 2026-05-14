@@ -32,26 +32,34 @@ def render(
     spec: JobSpec,
     *,
     cluster_id: str | None = None,
+    account: str | None = None,
+    partition: str | None = None,
     artifact_dir: str = "<artifact_dir>",
 ) -> str:
     """Render a JobSpec to sbatch text. Byte-stable for the same inputs.
 
-    Picks account + partition via salvo.dispatch unless the spec pins them.
-    The artifact_dir placeholder is substituted verbatim; callers are
-    expected to manage their own artifact paths (or use salvo.submit).
+    Pure when ``account`` and ``partition`` are provided (or pinned on the
+    spec). Library callers (cluv, xgenius, etc.) should pass them explicitly
+    so render() has no side effects. When either is missing, salvo.dispatch
+    fills it in by shelling out to squeue for live capacity; that path only
+    works on a SLURM login node.
     """
     cid = cluster_id or detect_cluster()
     if cid is None:
         raise SalvoError("could not detect cluster; pass cluster_id= or set SALVO_CLUSTER")
     cluster_obj = load_cluster(cid)
-    caps = CapsTracker(cluster_id=cid, user=os.environ.get("USER", "unknown"))
-    account = pick_account(spec, cluster_obj, caps.snapshot())
-    partition = pick_partition(spec, cluster_obj, account=account)
+    acct = account or spec.account
+    part = partition or spec.partition
+    if acct is None or part is None:
+        caps = CapsTracker(cluster_id=cid, user=os.environ.get("USER", "unknown"))
+        snap = caps.snapshot()
+        acct = acct or pick_account(spec, cluster_obj, snap)
+        part = part or pick_partition(spec, cluster_obj, account=acct)
     return render_sbatch(
         spec,
         cluster=cluster_obj,
-        account=account,
-        partition=partition,
+        account=acct,
+        partition=part,
         artifact_dir=artifact_dir,
     )
 

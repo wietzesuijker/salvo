@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import typer
@@ -10,14 +9,10 @@ import yaml
 from rich.console import Console
 from rich.table import Table
 
-from salvo.dispatch.account import pick_account
-from salvo.dispatch.caps import CapsTracker
-from salvo.dispatch.partition import pick_partition
+from salvo import render as render_spec
 from salvo.doctor import CheckStatus, run_doctor
-from salvo.job.render import render_sbatch
+from salvo.errors import SalvoError
 from salvo.job.spec import JobSpec
-from salvo.topology.detect import detect_cluster
-from salvo.topology.loader import load_cluster
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -56,28 +51,33 @@ def render(
     cluster_id: str | None = typer.Option(
         None, "--cluster", help="cluster id (defaults to detect)"
     ),
+    account: str | None = typer.Option(
+        None, "--account", help="override picked account; skips squeue when both set"
+    ),
+    partition: str | None = typer.Option(
+        None, "--partition", help="override picked partition; skips squeue when both set"
+    ),
     artifact_dir: str = typer.Option(
         "<artifact_dir>", "--artifact-dir", help="path substituted into sbatch.sh"
     ),
 ) -> None:
-    """Render a JobSpec (YAML) to sbatch text on stdout."""
+    """Render a JobSpec (YAML) to sbatch text on stdout.
+
+    Pure when --account and --partition are both supplied (or pinned on the
+    spec). Otherwise shells out to squeue for capacity-aware picking, which
+    only works on a SLURM login node.
+    """
     raw = yaml.safe_load(spec_path.read_text()) or {}
     spec = JobSpec.model_validate(raw)
-    cid = cluster_id or detect_cluster()
-    if cid is None:
-        console.print("[red]could not detect cluster; pass --cluster or set SALVO_CLUSTER[/red]")
-        raise typer.Exit(2)
-    cluster = load_cluster(cid)
-    caps = CapsTracker(cluster_id=cid, user=os.environ.get("USER", "unknown"))
-    account = pick_account(spec, cluster, caps.snapshot())
-    partition = pick_partition(spec, cluster, account=account)
-    typer.echo(
-        render_sbatch(
+    try:
+        text = render_spec(
             spec,
-            cluster=cluster,
+            cluster_id=cluster_id,
             account=account,
             partition=partition,
             artifact_dir=artifact_dir,
-        ),
-        nl=False,
-    )
+        )
+    except SalvoError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(2) from exc
+    typer.echo(text, nl=False)
