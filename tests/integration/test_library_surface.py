@@ -61,7 +61,7 @@ def test_readme_policy_example(forbid_subprocess):
         mem="16G",
         on_oom=["bump_mem(1.5x, max=128G)", "escalate_partition", "fail"],
     )
-    new_spec, action = apply_oom(prev_spec, OomContext(class_="cpu", max_rss_mb=15500))
+    new_spec, action = apply_oom(prev_spec, OomContext(kind="cpu", max_rss_mb=15500))
     assert new_spec is not None
     assert action == "bump_mem"
     assert new_spec.mem_mb() > prev_spec.mem_mb()

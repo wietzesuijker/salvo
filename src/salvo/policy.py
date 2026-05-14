@@ -2,7 +2,7 @@
 
 External callers (cluv, xgenius, user code) should import from here:
 
-    from salvo.policy import parse, apply_oom, Step, OomContext
+    from salvo.policy import parse, apply_oom, Step, OomContext, OomDecision
     from salvo.policy import BumpMemStep, EscalatePartitionStep, FailStep
 
 The implementation lives in salvo.job.oom; this module only renames
@@ -12,12 +12,15 @@ The implementation lives in salvo.job.oom; this module only renames
 from __future__ import annotations
 
 from salvo.job.oom import (
+    Action,
     BumpGpusStep,
     BumpMemStep,
     CallbackStep,
     EscalatePartitionStep,
     FailStep,
+    Kind,
     OomContext,
+    OomDecision,
     Step,
 )
 from salvo.job.oom import (
@@ -28,12 +31,15 @@ from salvo.job.oom import (
 )
 
 __all__ = [
+    "Action",
     "BumpGpusStep",
     "BumpMemStep",
     "CallbackStep",
     "EscalatePartitionStep",
     "FailStep",
+    "Kind",
     "OomContext",
+    "OomDecision",
     "Step",
     "apply_oom",
     "parse",

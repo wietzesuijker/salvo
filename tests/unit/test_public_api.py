@@ -9,6 +9,7 @@ from salvo.policy import (
     EscalatePartitionStep,
     FailStep,
     OomContext,
+    OomDecision,
     Step,
     apply_oom,
     parse,
@@ -94,10 +95,14 @@ def test_policy_apply_oom_bumps_mem():
         mem="16G",
         on_oom=["bump_mem(2x, max=128G)", "fail"],
     )
-    new_spec, action = apply_oom(spec, OomContext(class_="cpu", max_rss_mb=14000))
-    assert new_spec is not None
-    assert action == "bump_mem"
+    decision = apply_oom(spec, OomContext(kind="cpu", max_rss_mb=14000))
+    # NamedTuple: both attribute access and tuple-unpack must work.
+    assert isinstance(decision, OomDecision)
+    assert decision.new_spec is not None
+    assert decision.action == "bump_mem"
+    new_spec, action = decision
     assert new_spec.mem_mb() >= 32 * 1024
+    assert action == "bump_mem"
 
 
 def test_topology_load_preset_and_alias():

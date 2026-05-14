@@ -14,7 +14,7 @@ def test_resubmit_with_bumped_mem(fake_sbatch, tmp_home):
         on_oom=["bump_mem(2x, max=128G)", "fail"],
     )
     h1 = submit(spec, cluster_id="mila")
-    new_spec, action = apply_oom_policy(h1.spec, OomContext(class_="cpu", max_rss_mb=15500))
+    new_spec, action = apply_oom_policy(h1.spec, OomContext(kind="cpu", max_rss_mb=15500))
     assert new_spec is not None
     assert action == "bump_mem"
     assert new_spec.mem_mb() >= 32 * 1024

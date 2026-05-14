@@ -42,7 +42,7 @@ from salvo.policy import parse, apply_oom, OomContext
 
 steps = parse(["bump_mem(1.5x, max=128G)", "escalate_partition", "fail"])
 
-new_spec, action = apply_oom(prev_spec, OomContext(class_="cpu", max_rss_mb=33_500))
+new_spec, action = apply_oom(prev_spec, OomContext(kind="cpu", max_rss_mb=33_500))
 # new_spec is a fresh JobSpec with bumped mem, or None if the policy says fail
 ```
 

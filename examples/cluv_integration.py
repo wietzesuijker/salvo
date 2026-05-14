@@ -47,7 +47,7 @@ def main() -> None:
         # 3. Synthesize an OOM context. cluv builds this from the job state
         #    it already tracks (sacct max_rss, tail of stderr, cpu/gpu class).
         ctx = OomContext(
-            class_="cpu",
+            kind="cpu",
             max_rss_mb=current.mem_mb(),  # observed RSS pinned to current ask
             log_excerpt="slurmstepd: error: Detected 1 oom_kill event",
         )
