@@ -1,82 +1,105 @@
 # salvo
 
-Multi-cluster SLURM job runner for Mila and DRAC. Submit Python or shell from a decorator, route to the right account and partition, recover from OOM and preempt automatically.
+Policy and render library for SLURM. salvo turns a `JobSpec` into byte-stable sbatch text and decides what to do when a job hits OOM or gets preempted. It does not move code to the cluster, does not open SSH connections, and is not a runner. For transport, pair it with [cluv](https://github.com/mila-iqia/cluv) or invoke `sbatch` directly.
 
 ## Install
 
-    pip install pysalvo[mila,drac]
-    salvo doctor
+    pip install pysalvo
 
-`doctor` checks topology detection, ssh alias hygiene, and the dataset manifest. Fix hints print under any WARN or FAIL.
+Two CLI commands ship for diagnostics and one-shot rendering. Everything else is meant to be imported.
 
-## Submit a job
+    salvo doctor                                 # topology, ssh alias hygiene, manifest freshness
+    salvo render spec.yaml --cluster mila        # JobSpec YAML to sbatch text on stdout
 
-CLI:
+## Render
 
-    salvo submit --name hello --cpus 2 --mem 4G --time 30m -- echo hi
+```python
+from salvo import JobSpec, render
 
-Dry-run (print the rendered sbatch without submitting):
+spec = JobSpec(
+    name="train",
+    cmd=["python", "train.py"],
+    gpus=1, cpus=8, mem="32G", time="2h",
+    on_oom=["bump_mem(1.5x, max=128G)", "fail"],
+)
 
-    salvo submit --name hello --plan -- echo hi
+sbatch_text = render(
+    spec,
+    cluster_id="mila",
+    account="mila",
+    partition="unkillable",
+)  # str, byte-stable, no side effects
+```
 
-Decorator (Python):
+Same JobSpec, same cluster, same inputs, same bytes every run. Useful when you need to audit what was actually submitted six months later.
 
-    from salvo import cluster
+If you leave `account` and `partition` off, salvo picks them via `salvo.dispatch` by shelling out to `squeue` for live capacity. That path only works on a SLURM login node; library callers (cluv, xgenius) should pass both explicitly to keep `render()` pure.
 
-    @cluster.submit(gpus=1, cpus=8, mem="32G", time="2h",
-                    on_oom=["bump_mem(1.5x, max=128G)", "fail"])
-    def train(seed: int):
-        ...
+## OOM policy
 
-    handle = train.submit(seed=42)
-    print(handle.job_id)
+```python
+from salvo.policy import parse, apply_oom, OomContext
 
-## Status, logs, cancel
+steps = parse(["bump_mem(1.5x, max=128G)", "escalate_partition", "fail"])
 
-    salvo status <job_id>
-    salvo logs   <job_id> --stream stdout
-    salvo logs   <job_id> --follow
-    salvo cancel <job_id>
+new_spec, action = apply_oom(prev_spec, OomContext(class_="cpu", max_rss_mb=33_500))
+# new_spec is a fresh JobSpec with bumped mem, or None if the policy says fail
+```
 
-## Cluster detection
+The DSL is intentionally small. Steps run in order until one applies:
 
-Order of precedence:
+- `bump_mem(<factor>x, max=<size>)` — multiplicative bump, capped
+- `escalate_partition` — clear partition so the next render picks a larger tier
+- `fail` — terminal
+- `bump_gpus(...)`, `callback(...)` — parse today, execute in a later release
 
-1. `SALVO_CLUSTER` env var
-2. `CC_CLUSTER` env var (DRAC convention)
-3. Hostname pattern match
+## Cluster topology
 
-Override per-call with `salvo submit --cluster <id>`.
+Five presets ship in `salvo/topology/presets/`: `mila`, `rorqual`, `narval`, `beluga`, `cedar`. More DRAC clusters land as YAMLs are contributed. Each YAML lists accounts, partitions, and capacity rules.
 
-Bundled presets: `mila`, `rorqual`, `narval`, `beluga`, `cedar`. Seven more DRAC clusters land in 0.2.
+```python
+from salvo.topology import load_preset, list_presets
 
-## Artifacts
+list_presets()                      # ['beluga', 'cedar', 'mila', 'narval', 'rorqual']
+cluster = load_preset("mila")       # ClusterTopology
+```
 
-Each submit writes `~/.salvo/runs/<job_id>/`:
+Contributing a new cluster is one YAML file. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- `spec.json`: validated `JobSpec`
-- `sbatch.sh`: rendered script
-- `events.jsonl`: append-only event stream
-- `stdout`, `stderr`: once the job runs
+## Decorator (optional, Python-native)
 
-## OOM policy DSL
+If you'd rather write a function than a YAML spec:
 
-    on_oom=[
-        "bump_mem(1.5x, max=128G)",   # resubmit with bumped mem (CPU OOM)
-        "escalate_partition",          # try a larger partition tier
-        "fail",                        # terminal
-    ]
+```python
+from salvo import cluster
 
-Steps apply in order until one matches. `callback(...)` and `bump_gpus(...)` parse in 0.1 but execute starting 0.2.
+@cluster.submit(gpus=1, cpus=8, mem="32G", time="2h",
+                on_oom=["bump_mem(1.5x, max=128G)", "fail"])
+def train(seed: int):
+    ...
 
-## Contributing
+handle = train.submit(seed=42)
+```
 
-The fastest contribution is a new cluster preset: one YAML file under `src/salvo/topology/presets/`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+`train.submit(...)` runs the local-sbatch convenience path: it renders, calls `sbatch`, and returns a handle. Skip the decorator if you're embedding salvo inside another tool's submit flow; just call `render()` and let that tool do the submission.
 
-## Security
+## Use with cluv
 
-See [SECURITY.md](SECURITY.md).
+cluv handles SSH, code sync, and the `sbatch` call. salvo handles the policy. The natural composition is cluv importing salvo's policy library when a user opts in:
+
+```toml
+# in your project's pyproject.toml
+[tool.cluv.retry]
+on_oom = ["bump_mem(1.5x, max=128G)", "fail"]
+max_hops = 5
+```
+
+This is a proposal, not a shipped feature in cluv. An upstream issue is in draft.
+
+## Use with anything that calls sbatch
+
+salvo has no SSH or async dependencies. It is a pydantic + stdlib library. Any tool that runs `sbatch` can import `salvo.render`, `salvo.policy.apply_oom`, and `salvo.topology.load_preset` independently. Two runnable examples under [`examples/`](examples/) show the wiring end-to-end: [`cluv_integration.py`](examples/cluv_integration.py) (policy + render) and [`xgenius_integration.py`](examples/xgenius_integration.py) (policy-only, when the host tool keeps its own renderer).
 
 ## License
 
-MIT.
+MIT. See [LICENSE](LICENSE).
