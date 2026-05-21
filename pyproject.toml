@@ -1,6 +1,6 @@
 [project]
 name = "pysalvo"
-version = "0.2.0"
+version = "0.2.1"
 description = "Render + policy library for SLURM JobSpecs (Mila + DRAC clusters)"
 readme = "README.md"
 license = { text = "MIT" }
