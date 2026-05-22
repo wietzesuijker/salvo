@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from salvo.history import JobRecord, estimate_mem, spec_key
+from salvo.history import JobRecord, estimate_mem, format_suggestion, spec_key
 
 
 def _record(
@@ -229,3 +229,65 @@ def test_safety_factor_scales_estimate(safety):
     records = [_record(job_id=str(i), max_rss_mb=4000) for i in range(6)]
     e = estimate_mem(records, min_samples=3, safety=safety)
     assert e.mem_mb == round(4000 * safety)
+
+
+def test_suggested_floor_matches_mem_mb_when_sufficient():
+    records = [_record(job_id=str(i), max_rss_mb=4000) for i in range(6)]
+    e = estimate_mem(records, min_samples=3)
+    assert e.suggested_floor_mb == e.mem_mb
+    assert e.suggested_floor_mb == 4800
+
+
+def test_current_ask_round_trips_through_estimate():
+    records = [_record(job_id=str(i), max_rss_mb=4000) for i in range(6)]
+    e = estimate_mem(records, min_samples=3, current_ask_mb=32768)
+    assert e.current_ask_mb == 32768
+
+
+def test_format_suggestion_insufficient_samples_returns_none():
+    e = estimate_mem([_record()], min_samples=3, current_ask_mb=32768)
+    assert format_suggestion(e) is None
+
+
+def test_format_suggestion_exactly_right_ask_returns_none():
+    # Six stable runs around 4000M; estimator -> 4800M floor; ask 5000M is well
+    # under the 1.5x trigger so no suggestion is emitted.
+    records = [_record(job_id=str(i), max_rss_mb=4000) for i in range(6)]
+    e = estimate_mem(records, min_samples=3, current_ask_mb=5000)
+    assert format_suggestion(e) is None
+
+
+def test_format_suggestion_over_ask_emits_suggestion():
+    records = [_record(job_id=str(i), max_rss_mb=4000) for i in range(6)]
+    # Floor is 4800M; asking 16384M (16G) is ~3.4x over -> suggestion fires.
+    e = estimate_mem(records, min_samples=3, current_ask_mb=16384)
+    msg = format_suggestion(e)
+    assert msg is not None
+    assert "SBATCH_MEM=" in msg
+    assert "4800M" in msg or "4800" in msg
+    assert "16G" in msg
+    assert "3.4x" in msg
+
+
+def test_format_suggestion_growing_workload_returns_none():
+    base = datetime(2026, 5, 1, tzinfo=UTC)
+    rss = [1000, 1200, 1400, 1600, 1800, 2000]
+    records = [
+        _record(job_id=str(i), max_rss_mb=v, ts=base + timedelta(hours=i))
+        for i, v in enumerate(rss)
+    ]
+    # Growing series with a clearly over-allocated 16G ask. Confidence drops
+    # to "medium" so the suggestion is suppressed.
+    e = estimate_mem(records, min_samples=3, current_ask_mb=16384)
+    assert e.confidence == "medium"
+    assert format_suggestion(e) is None
+
+
+def test_format_suggestion_uses_gibibyte_format_on_round_floors():
+    # 8192M observation -> floor = round(8192 * 1.2) = 9830M, not a round G;
+    # but ask formats as 32G (32768M). Mostly verifying the ask side renders G.
+    records = [_record(job_id=str(i), max_rss_mb=8192) for i in range(6)]
+    e = estimate_mem(records, min_samples=3, current_ask_mb=32768)
+    msg = format_suggestion(e)
+    assert msg is not None
+    assert "32G" in msg

@@ -43,7 +43,10 @@ class MemEstimate(NamedTuple):
     """Output of ``estimate_mem``.
 
     ``mem_mb`` is ``None`` when there is not enough history; the caller should
-    then fall back to its configured default.
+    then fall back to its configured default. ``suggested_floor_mb`` is the
+    right-size-down target (same value as ``mem_mb`` when populated) carried as
+    a separate field so ``format_suggestion`` can compare against
+    ``current_ask_mb`` without re-deriving it.
     """
 
     mem_mb: int | None
@@ -52,6 +55,8 @@ class MemEstimate(NamedTuple):
     p95_mb: int | None
     growth_slope_mb_per_run: float | None
     rationale: str
+    current_ask_mb: int | None = None
+    suggested_floor_mb: int | None = None
 
 
 def spec_key(
@@ -147,6 +152,7 @@ def estimate_mem(
     min_samples: int = 3,
     growth_bump: float = 1.25,
     growth_threshold_pct: float = 0.05,
+    current_ask_mb: int | None = None,
 ) -> MemEstimate:
     """Estimate a memory ask from a window of past ``JobRecord``s.
 
@@ -162,7 +168,7 @@ def estimate_mem(
        ``"medium"`` when sufficient but small or growing, ``"low"`` otherwise.
     """
     if not records:
-        return MemEstimate(None, "none", 0, None, None, "no history records")
+        return MemEstimate(None, "none", 0, None, None, "no history records", current_ask_mb, None)
 
     recent = sorted(records, key=lambda r: r.submitted_at, reverse=True)[:window]
     observations: list[tuple[datetime, int]] = []
@@ -182,6 +188,8 @@ def estimate_mem(
             None,
             None,
             f"only {n} usable observation(s); need >= {min_samples}",
+            current_ask_mb,
+            None,
         )
 
     values = [v for _, v in observations]
@@ -211,4 +219,37 @@ def estimate_mem(
         p95,
         slope if n >= 4 else None,
         rationale,
+        current_ask_mb,
+        estimate,
+    )
+
+
+def _format_mb(mb: int) -> str:
+    """Render an integer MiB value as a SLURM-style ask (``"16G"`` / ``"512M"``)."""
+    if mb >= 1024 and mb % 1024 == 0:
+        return f"{mb // 1024}G"
+    return f"{mb}M"
+
+
+def format_suggestion(estimate: MemEstimate) -> str | None:
+    """Return a one-line right-size-down suggestion, or ``None``.
+
+    Triggers only on high-confidence stable histories where the current ask is
+    at least 1.5x the right-sized floor. Growth and low-sample cases are
+    suppressed to avoid downsizing a workload whose footprint is still moving.
+    """
+    floor = estimate.suggested_floor_mb
+    ask = estimate.current_ask_mb
+    if floor is None or floor <= 0 or ask is None:
+        return None
+    # ``"high"`` already implies n >= 2 * min_samples and a flat slope (the
+    # confidence rules in ``estimate_mem`` demote growing series to "medium").
+    if estimate.confidence != "high":
+        return None
+    ratio = ask / floor
+    if ratio < 1.5:
+        return None
+    return (
+        f"history suggests SBATCH_MEM={_format_mb(floor)} "
+        f"(current ask: {_format_mb(ask)}, ~{ratio:.1f}x over)"
     )
