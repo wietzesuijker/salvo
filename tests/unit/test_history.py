@@ -98,6 +98,36 @@ def test_oom_record_uses_request_as_lower_bound():
     assert e.mem_mb == 3600
 
 
+def test_degenerate_max_rss_falls_back_to_req_mem():
+    # sacct can miss the peak for short jobs and report MaxRSS as a tiny value
+    # even though the job actually used the full allocation. The estimator
+    # should treat that as degenerate and use ReqMem instead.
+    base = datetime(2026, 5, 1, tzinfo=UTC)
+    records = [
+        _record(state="OUT_OF_MEMORY", mem_mb=2048, max_rss_mb=1, ts=base, job_id="1"),
+        _record(
+            state="OUT_OF_MEMORY",
+            mem_mb=4096,
+            max_rss_mb=0,
+            ts=base + timedelta(hours=1),
+            job_id="2",
+        ),
+        # 8G COMPLETED but MaxRSS reads 100M -- clearly bogus.
+        _record(
+            state="COMPLETED",
+            mem_mb=8192,
+            max_rss_mb=100,
+            ts=base + timedelta(hours=2),
+            job_id="3",
+        ),
+    ]
+    e = estimate_mem(records, min_samples=3)
+    # Observations should be [2048, 4096, 8192] after falling back on the
+    # degenerate COMPLETED row -- P95 = 8192, * 1.2 = 9830.
+    assert e.p95_mb == 8192
+    assert e.mem_mb == round(8192 * 1.2)
+
+
 def test_growth_bumps_safety():
     base = datetime(2026, 5, 1, tzinfo=UTC)
     # Monotone increase: 1000, 1200, 1400, 1600, 1800, 2000.

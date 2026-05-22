@@ -76,21 +76,35 @@ def spec_key(
     return h.hexdigest()
 
 
+# sacct samples MaxRSS at a low frequency; short-lived peaks can be missed
+# entirely. When a COMPLETED job reports a MaxRSS that is implausibly small
+# compared to its ReqMem (e.g. 100M reported for an 8G allocation), treat the
+# reading as degenerate and fall back to ReqMem. The job is known to fit in
+# ReqMem because it COMPLETED, so that is a safe upper bound.
+DEGENERATE_RSS_RATIO = 0.05
+
+
 def _observation(record: JobRecord) -> int | None:
     """Map a record to a single memory-used number, handling right-censoring.
 
-    - ``COMPLETED`` with a ``max_rss_mb``: that value is the true upper bound.
     - ``OUT_OF_MEMORY``: ``MaxRSS`` is truncated at the request, so use
       ``mem_mb`` as a lower-bound observation. A later successful run will
       raise the ceiling; until then the estimator at least matches the last
       OOM ask, which is better than under-predicting.
-    - Anything without ``max_rss_mb`` and not OOM: not informative, drop.
+    - ``COMPLETED`` / ``FAILED`` with a credible ``max_rss_mb``: use it.
+    - ``COMPLETED`` with a suspiciously low ``max_rss_mb`` (sacct sampling
+      missed the peak): fall back to ``mem_mb`` since the job fit in that
+      allocation.
+    - Anything else without a usable ``max_rss_mb``: drop.
     """
     if record.state == "OUT_OF_MEMORY":
         return max(record.mem_mb, record.max_rss_mb or 0)
-    if record.max_rss_mb is not None and record.max_rss_mb > 0:
-        return record.max_rss_mb
-    return None
+    rss = record.max_rss_mb
+    if rss is None or rss <= 0:
+        return None
+    if record.state == "COMPLETED" and rss < record.mem_mb * DEGENERATE_RSS_RATIO:
+        return record.mem_mb
+    return rss
 
 
 def _percentile(values: list[int], p: int) -> int:
