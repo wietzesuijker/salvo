@@ -14,6 +14,7 @@ class DatasetLocation(BaseModel):
 
 
 class Dataset(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
     description: str = ""
     checksum: str | None = None
     locations: dict[str, DatasetLocation] = Field(default_factory=dict)

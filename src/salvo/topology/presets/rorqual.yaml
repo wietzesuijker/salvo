@@ -15,8 +15,8 @@ accounts:
   - { name: ctb-drolnick, gpu_cap: 16, cpu_cap: 256, mem_cap_gb: 1536, gpu_only: true }
   - { name: def-bengioy, gpu_cap: 4, cpu_cap: 64, mem_cap_gb: 256 }
 partitions:
-  - { name: gpubase_bygpu_b1, max_walltime_hours: 3, max_gpus_per_job: 4 }
-  - { name: gpubase_bygpu_b3, max_walltime_hours: 12, max_gpus_per_job: 4 }
+  - { name: gpubase_bygpu_b1, max_walltime_hours: 3, max_gpus_per_job: 4, prefer_mem_kind: per-gpu }
+  - { name: gpubase_bygpu_b3, max_walltime_hours: 12, max_gpus_per_job: 4, prefer_mem_kind: per-gpu }
   - { name: cpubase_bycore_b1, max_walltime_hours: 3, max_gpus_per_job: 0, max_mem_gb: 192 }
   - { name: cpubase_bycore_b4, max_walltime_hours: 12, max_gpus_per_job: 0, max_mem_gb: 192 }
 dispatch_rules:

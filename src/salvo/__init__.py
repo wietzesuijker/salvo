@@ -20,7 +20,20 @@ from salvo.decorators import cluster
 from salvo.dispatch.account import pick_account
 from salvo.dispatch.caps import CapsTracker
 from salvo.dispatch.partition import pick_partition
-from salvo.errors import SalvoError
+from salvo.errors import (
+    ClusterYAMLError,
+    DataNotStagedError,
+    DispatchError,
+    EventSchemaError,
+    ManifestError,
+    MaxHopsExceededError,
+    NoAccountError,
+    NoPartitionError,
+    OomPolicyError,
+    SalvoError,
+    SpecValidationError,
+    SubprocessError,
+)
 from salvo.job.render import render_sbatch
 from salvo.job.spec import JobSpec, PythonEntrypoint
 from salvo.job.submit import submit
@@ -65,8 +78,20 @@ def render(
 
 
 __all__ = [
+    "ClusterYAMLError",
+    "DataNotStagedError",
+    "DispatchError",
+    "EventSchemaError",
     "JobSpec",
+    "ManifestError",
+    "MaxHopsExceededError",
+    "NoAccountError",
+    "NoPartitionError",
+    "OomPolicyError",
     "PythonEntrypoint",
+    "SalvoError",
+    "SpecValidationError",
+    "SubprocessError",
     "__version__",
     "cluster",
     "render",

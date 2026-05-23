@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from dataclasses import dataclass as _dc
 from typing import Literal, NamedTuple
 
+from salvo.errors import OomPolicyError
 from salvo.job.spec import JobSpec, parse_mem_mb
 
 Action = Literal["bump_mem", "escalate_partition", "fail"]
@@ -71,11 +72,11 @@ def _parse_one(s: str) -> Step:
     if m := _CALLBACK_RE.match(s):
         target = m.group(1)
         if ":" not in target:
-            raise ValueError(f"callback target must be module.path:function, got {target!r}")
+            raise OomPolicyError(f"callback target must be module.path:function, got {target!r}")
         return CallbackStep(target=target)
     if s == "fail":
         return FailStep()
-    raise ValueError(f"unknown on_oom step: {s!r}")
+    raise OomPolicyError(f"unknown on_oom step: {s!r}")
 
 
 def parse_policy(steps: list[str]) -> list[Step]:

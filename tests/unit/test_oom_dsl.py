@@ -1,4 +1,5 @@
 import pytest
+from salvo.errors import OomPolicyError, SalvoError
 from salvo.job.oom import (
     BumpGpusStep,
     BumpMemStep,
@@ -45,4 +46,18 @@ def test_empty_defaults_to_fail():
 
 def test_callback_missing_colon_raises():
     with pytest.raises(ValueError):
+        parse_policy(["callback(myproject.halve_batch)"])
+
+
+def test_unknown_step_raises_oom_policy_error():
+    """Unknown step text must surface as OomPolicyError (SalvoError), not bare ValueError."""
+    with pytest.raises(OomPolicyError) as exc:
+        parse_policy(["nonsense_step"])
+    assert isinstance(exc.value, SalvoError)
+    # back-compat: OomPolicyError still IS-A ValueError so existing callers keep working
+    assert isinstance(exc.value, ValueError)
+
+
+def test_callback_missing_colon_raises_oom_policy_error():
+    with pytest.raises(OomPolicyError):
         parse_policy(["callback(myproject.halve_batch)"])

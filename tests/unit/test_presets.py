@@ -43,3 +43,22 @@ def test_drac_login_has_apptainer_env():
         assert c.login is not None
         assert c.login.apptainer_env.get("GOMAXPROCS") == "1"
         assert c.login.apptainer_env.get("GOMEMLIMIT") == "2GiB"
+
+
+def test_rorqual_bygpu_uses_per_gpu_mem():
+    c = load_cluster("rorqual")
+    for pname in ("gpubase_bygpu_b1", "gpubase_bygpu_b3"):
+        p = next(p for p in c.partitions if p.name == pname)
+        assert p.prefer_mem_kind == "per-gpu", f"{pname} must use per-gpu mem"
+
+
+def test_mila_long_requires_qos():
+    c = load_cluster("mila")
+    p = next(p for p in c.partitions if p.name == "long")
+    assert p.requires_qos == "long"
+
+
+def test_mila_long_cpu_requires_qos():
+    c = load_cluster("mila")
+    p = next(p for p in c.partitions if p.name == "long-cpu")
+    assert p.requires_qos == "long"

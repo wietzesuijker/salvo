@@ -85,3 +85,27 @@ def test_render_with_account_and_partition_skips_squeue(monkeypatch, tmp_path: P
     assert r.exit_code == 0, r.stdout
     assert "#SBATCH --account=mila" in r.stdout
     assert "#SBATCH --partition=unkillable" in r.stdout
+
+
+def test_render_bad_yaml(tmp_path: Path):
+    """Malformed YAML must exit 2 with a friendly message, not a traceback."""
+    spec_path = tmp_path / "spec.yaml"
+    spec_path.write_text("name: t\n  cmd: [echo]\n bad: : indent\n")
+    r = runner.invoke(app, ["render", str(spec_path)])
+    assert r.exit_code == 2
+    # No raw traceback should reach the user.
+    combined = ((r.stdout or "") + (r.stderr or "")).lower()
+    assert "Traceback" not in (r.stdout or "") and "Traceback" not in (r.stderr or "")
+    assert "yaml" in combined or "parse" in combined or "invalid" in combined
+
+
+def test_render_bad_spec(tmp_path: Path):
+    """Spec failing pydantic validation must exit 2 with a friendly message."""
+    spec_path = tmp_path / "spec.yaml"
+    # 'time' must match HMS or human-time regex; "purple" fails validation
+    spec_path.write_text(yaml.safe_dump({"name": "t", "cmd": ["echo"], "time": "purple"}))
+    r = runner.invoke(app, ["render", str(spec_path)])
+    assert r.exit_code == 2
+    combined = (r.stdout or "") + (r.stderr or "")
+    assert "Traceback" not in combined
+    assert "spec" in combined.lower() or "valid" in combined.lower() or "time" in combined.lower()

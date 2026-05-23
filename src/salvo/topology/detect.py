@@ -7,7 +7,19 @@ import re
 import socket
 
 _HOSTNAME_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"mila.*\.iro\.umontreal\.ca$|mila-(?:cluster-)?login"), "mila"),
+    (
+        re.compile(
+            r"mila.*\.iro\.umontreal\.ca$"
+            r"|mila-(?:cluster-)?login"
+            r"|^login-?\d+\.server\.mila\.quebec$"
+            r"|^cn-[a-z]\d+(?:\.|$)"
+            r"|^mila-(?:l40s|cpu|gpu)-?\d+"
+        ),
+        "mila",
+    ),
+    # NOTE: nc*/ng*/blg*/cdr* compute hostnames are ambiguous across DRAC
+    # clusters (narval vs rorqual share nc*/ng*); rely on CC_CLUSTER env on
+    # DRAC compute nodes instead of pattern-matching bare compute hostnames.
     (re.compile(r"^login\d*\.rorqual\."), "rorqual"),
     (re.compile(r"^login\d*\.narval\."), "narval"),
     (re.compile(r"^login\d*\.beluga\."), "beluga"),

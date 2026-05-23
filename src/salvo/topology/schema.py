@@ -32,6 +32,8 @@ class Partition(BaseModel):
     max_gpus_per_job: int = 0
     max_mem_gb: int | None = None
     requires_account_suffix: Literal["_cpu", "_gpu", None] = None
+    prefer_mem_kind: Literal["total", "per-gpu"] = "total"
+    requires_qos: str | None = None
 
 
 class DispatchRule(BaseModel):

@@ -17,6 +17,7 @@ try:
 except ImportError:
     _tomli_w = None  # falls back to manual TOML emission below
 
+from salvo.errors import ManifestError  # noqa: E402
 from salvo.manifest.schema import Dataset, DatasetLocation  # noqa: E402
 
 
@@ -29,13 +30,21 @@ class Manifest:
     def load(cls, path: Path) -> Manifest:
         if not path.exists():
             return cls(path, {})
-        with path.open("rb") as f:
-            raw = tomllib.load(f)
-        ds_raw = raw.get("datasets", {})
-        datasets: dict[str, Dataset] = {}
-        for name, body in ds_raw.items():
-            locs = {cid: DatasetLocation(**loc) for cid, loc in body.pop("locations", {}).items()}
-            datasets[name] = Dataset(**body, locations=locs)
+        try:
+            with path.open("rb") as f:
+                raw = tomllib.load(f)
+        except tomllib.TOMLDecodeError as e:
+            raise ManifestError(f"could not parse manifest TOML at {path}: {e}") from e
+        try:
+            ds_raw = raw.get("datasets", {})
+            datasets: dict[str, Dataset] = {}
+            for name, body in ds_raw.items():
+                locs = {
+                    cid: DatasetLocation(**loc) for cid, loc in body.pop("locations", {}).items()
+                }
+                datasets[name] = Dataset(**body, locations=locs)
+        except (TypeError, KeyError, ValueError) as e:
+            raise ManifestError(f"malformed manifest shape at {path}: {e}") from e
         return cls(path, datasets)
 
     def record(self, name: str, *, cluster: str, location: DatasetLocation) -> None:

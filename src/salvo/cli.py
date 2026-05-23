@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pydantic
 import typer
 import yaml
 from rich.console import Console
@@ -11,7 +12,7 @@ from rich.table import Table
 
 from salvo import render as render_spec
 from salvo.doctor import CheckStatus, run_doctor
-from salvo.errors import SalvoError
+from salvo.errors import SalvoError, SpecValidationError
 from salvo.job.spec import JobSpec
 
 app = typer.Typer(
@@ -67,8 +68,16 @@ def render(
     spec). Otherwise shells out to squeue for capacity-aware picking, which
     only works on a SLURM login node.
     """
-    raw = yaml.safe_load(spec_path.read_text()) or {}
-    spec = JobSpec.model_validate(raw)
+    try:
+        raw = yaml.safe_load(spec_path.read_text()) or {}
+    except yaml.YAMLError as exc:
+        typer.echo(f"invalid YAML in {spec_path}: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    try:
+        spec = JobSpec.model_validate(raw)
+    except pydantic.ValidationError as exc:
+        typer.echo(f"invalid spec in {spec_path}: {exc}", err=True)
+        raise typer.Exit(2) from SpecValidationError(str(exc))
     try:
         text = render_spec(
             spec,

@@ -61,3 +61,19 @@ def test_unknown_field_rejected():
             partitions=[],
             bogus=True,
         )
+
+
+def test_partition_defaults_prefer_total():
+    p = Partition(name="main", max_walltime_hours=3, max_gpus_per_job=4)
+    assert p.prefer_mem_kind == "total"
+    assert p.requires_qos is None
+
+
+def test_partition_rejects_invalid_prefer_mem_kind():
+    with pytest.raises(ValidationError):
+        Partition(
+            name="bad",
+            max_walltime_hours=3,
+            max_gpus_per_job=4,
+            prefer_mem_kind="per-cpu",
+        )

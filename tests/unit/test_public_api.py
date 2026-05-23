@@ -55,7 +55,7 @@ def test_render_is_pure_when_account_and_partition_supplied(monkeypatch):
     out = render(spec, cluster_id="mila", account="mila", partition="unkillable")
     assert "#SBATCH --account=mila" in out
     assert "#SBATCH --partition=unkillable" in out
-    assert "#SBATCH --gres=gpu:1" in out
+    assert "#SBATCH --gres=gpu:a100:1" in out
 
 
 def test_render_uses_spec_pinned_account_and_partition(monkeypatch):

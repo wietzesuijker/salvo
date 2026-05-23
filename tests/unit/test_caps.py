@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
-from salvo.dispatch.caps import CapsTracker
+import pytest
+from salvo.dispatch.caps import CapsTracker, _parse_mem
 
 SQUEUE_OUT = """\
 12345|rrg-bengioy-ad|gpubase_bygpu_b3|gpu:2|16|32768
@@ -43,3 +44,19 @@ def test_ttl_refresh(monkeypatch):
     monkeypatch.setattr("time.monotonic", lambda: 61)
     t.snapshot()
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "s,mb",
+    [
+        ("4G", 4096),
+        ("4000M", 4000),
+        ("2048K", 2),
+        ("1T", 1048576),
+        ("", 0),
+        ("garbage", 0),
+        ("4GiB", 4096),
+    ],
+)
+def test_parse_mem(s, mb):
+    assert _parse_mem(s) == mb

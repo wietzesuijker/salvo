@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
-import subprocess
+import uuid
 from pathlib import Path
 
 from salvo._version import __version__
 from salvo.dispatch.account import pick_account
 from salvo.dispatch.caps import CapsTracker
 from salvo.dispatch.partition import pick_partition
-from salvo.errors import SalvoError
+from salvo.errors import SalvoError, _run_subprocess
 from salvo.job.handle import JobHandle
 from salvo.job.render import render_sbatch
 from salvo.job.spec import JobSpec
@@ -24,12 +25,31 @@ from salvo.topology.loader import load_cluster
 _JOBID_RE = re.compile(r"Submitted batch job (\d+)")
 
 
+def _read_parent_job_id(parent_dir: Path) -> str | None:
+    events_file = parent_dir / "events.jsonl"
+    if not events_file.exists():
+        return None
+    for line in events_file.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if rec.get("event") == "submit.success" and "job_id" in rec:
+            jid = rec["job_id"]
+            return str(jid) if jid is not None else None
+    return None
+
+
 def submit(
     spec: JobSpec,
     *,
     cluster_id: str | None = None,
     salvo_root: Path | None = None,
     allow_missing_data: bool = False,
+    hop: str | None = None,
+    parent_artifact_dir: Path | None = None,
 ) -> JobHandle:
     cluster_id = cluster_id or detect_cluster()
     if cluster_id is None:
@@ -41,7 +61,7 @@ def submit(
     user = os.environ.get("USER", "unknown")
     caps = CapsTracker(cluster_id=cluster_id, user=user)
 
-    pending_id = f"pending-{os.getpid()}-{int.from_bytes(os.urandom(4), 'big'):08x}"
+    pending_id = f"pending-{uuid.uuid4().hex}"
     artifact_dir = salvo_root / "runs" / pending_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
     emitter = EventEmitter(artifact_dir / "events.jsonl")
@@ -73,9 +93,15 @@ def submit(
     (artifact_dir / "spec.json").write_text(spec.model_dump_json(indent=2))
     (artifact_dir / "cluster.json").write_text(cluster.model_dump_json(indent=2))
 
-    proc = subprocess.run(
-        ["sbatch", str(artifact_dir / "sbatch.sh")], capture_output=True, text=True, check=False
-    )
+    try:
+        proc = _run_subprocess(
+            ["sbatch", str(artifact_dir / "sbatch.sh")],
+            check=False,
+            timeout=30,
+        )
+    except SalvoError as exc:
+        emitter.emit("submit.error", error=str(exc), cluster=cluster_id, name=spec.name)
+        raise
     if proc.returncode != 0:
         emitter.emit("submit.error", error=proc.stderr.strip(), cluster=cluster_id, name=spec.name)
         raise SalvoError(f"sbatch failed: {proc.stderr.strip()}")
@@ -91,7 +117,32 @@ def submit(
     job_id = m.group(1)
 
     final_dir = salvo_root / "runs" / job_id
+    if final_dir.exists():
+        # SLURM does not reuse job IDs, but a stale dir from a crashed prior
+        # submit with the same id would otherwise be silently overwritten.
+        emitter.emit(
+            "submit.error",
+            error=f"refusing to clobber existing run directory {final_dir}",
+            cluster=cluster_id,
+            name=spec.name,
+        )
+        raise SalvoError(
+            f"refusing to clobber existing run directory {final_dir}; "
+            "delete it manually if the prior submit is known-dead"
+        )
     artifact_dir.rename(final_dir)
+    if hop is not None:
+        (final_dir / "hop.json").write_text(json.dumps({"hop": hop}))
+    if parent_artifact_dir is not None:
+        parent_job_id = _read_parent_job_id(parent_artifact_dir)
+        (final_dir / "parent.json").write_text(
+            json.dumps(
+                {
+                    "parent_artifact_dir": str(parent_artifact_dir),
+                    "parent_job_id": parent_job_id,
+                }
+            )
+        )
     emitter = EventEmitter(final_dir / "events.jsonl")
     emitter.emit(
         "submit.success",

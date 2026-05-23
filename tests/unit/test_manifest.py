@@ -39,6 +39,46 @@ def test_locations_on(tmp_path):
     assert set(m.which_clusters_have({"a"})["a"]) == {"mila", "rorqual"}
 
 
+def test_load_corrupt_toml_raises_manifest_error(tmp_path):
+    """Manifest.load must surface ManifestError (SalvoError) on bad TOML, not tomllib error."""
+    import pytest
+    from salvo.errors import ManifestError, SalvoError
+
+    p = tmp_path / "bad.toml"
+    p.write_text("this is not = valid toml [[[")
+    with pytest.raises(ManifestError) as exc:
+        Manifest.load(p)
+    assert isinstance(exc.value, SalvoError)
+    assert str(p) in str(exc.value) or "bad.toml" in str(exc.value)
+
+
+def test_load_malformed_dataset_section_raises_manifest_error(tmp_path):
+    """Schema-shaped errors (TypeError/KeyError from **loc) also surface as ManifestError."""
+    import pytest
+    from salvo.errors import ManifestError
+
+    p = tmp_path / "shape.toml"
+    # locations entry missing required 'path' field → TypeError from DatasetLocation(**loc)
+    p.write_text(
+        'schema_version = 1\n\n[datasets.foo.locations.mila]\nverified_at = "not-a-date"\n'
+    )
+    with pytest.raises(ManifestError):
+        Manifest.load(p)
+
+
+def test_dataset_is_frozen():
+    """Dataset must be frozen + extra='forbid' to prevent accidental schema drift."""
+    import pytest
+    from pydantic import ValidationError
+    from salvo.manifest.schema import Dataset
+
+    ds = Dataset(description="x")
+    with pytest.raises(ValidationError):
+        ds.description = "y"  # type: ignore[misc]
+    with pytest.raises(ValidationError):
+        Dataset(description="x", bogus_field=1)  # type: ignore[call-arg]
+
+
 def test_atomic_write_via_rename(tmp_path, monkeypatch):
     p = tmp_path / "m.toml"
     m = Manifest.load(p)

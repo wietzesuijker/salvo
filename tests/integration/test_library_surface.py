@@ -44,7 +44,7 @@ def test_readme_render_example(forbid_subprocess):
     assert "#SBATCH --job-name=train" in sbatch_text
     assert "#SBATCH --account=mila" in sbatch_text
     assert "#SBATCH --partition=unkillable" in sbatch_text
-    assert "#SBATCH --gres=gpu:1" in sbatch_text
+    assert "#SBATCH --gres=gpu:a100:1" in sbatch_text
 
 
 def test_readme_policy_example(forbid_subprocess):

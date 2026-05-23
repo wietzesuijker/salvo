@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import subprocess
 import time
 from dataclasses import dataclass, field
+
+from salvo.errors import _run_subprocess
 
 
 @dataclass
@@ -15,24 +16,45 @@ class CapsSnapshot:
 
 
 def _run_squeue(user: str) -> str:
-    out = subprocess.run(
+    out = _run_subprocess(
         ["squeue", "-u", user, "-o", "%i|%a|%P|%b|%C|%m", "-h"],
-        capture_output=True,
-        text=True,
         check=True,
         timeout=10,
     )
     return out.stdout
 
 
+_MEM_MULT_MB: dict[str, float] = {"K": 1 / 1024, "M": 1, "G": 1024, "T": 1024 * 1024}
+
+
 def _parse_mem(field_str: str) -> int:
+    """Parse a squeue %m memory field to MB. Returns 0 on empty/malformed input.
+
+    Accepts forms like ``"4G"``, ``"4000M"``, ``"2048K"``, ``"1T"``, optionally
+    suffixed with ``"B"`` or ``"iB"`` (``"4GiB"``). All units treated as binary
+    (K=1024 bytes, M=1024 KiB, etc.) to match SLURM's convention.
+    """
     if not field_str:
         return 0
-    f = field_str.rstrip("MGT").rstrip("KMG")
+    s = field_str.strip()
+    if not s:
+        return 0
+    # Strip optional "iB" or "B" suffix (case-insensitive).
+    su = s.upper()
+    if su.endswith("IB"):
+        su = su[:-2]
+    elif su.endswith("B"):
+        su = su[:-1]
+    unit = ""
+    if su and su[-1] in _MEM_MULT_MB:
+        unit = su[-1]
+        su = su[:-1]
     try:
-        return int(float(f))
+        value = float(su)
     except ValueError:
         return 0
+    mult = _MEM_MULT_MB[unit] if unit else 1.0
+    return int(value * mult)
 
 
 class CapsTracker:
